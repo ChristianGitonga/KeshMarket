@@ -29,5 +29,13 @@ export default buildModule("KeshMarketModule", (m) => {
     id: "AuthorizeEqty",
   });
 
-  return { mockUSDC, vault, scomMarket, eqtyMarket };
+  // Prediction market: seeded with 10,000 virtual liquidity per side (50/50 starting odds)
+  const predictionLiquidity = 10_000n * 10n ** 18n;
+  const predictionMarket = m.contract("PredictionMarket", [
+    mockUSDC,
+    "Will the Kenya Shilling weaken past 145/USD by year end?",
+    predictionLiquidity,
+  ]);
+
+  return { mockUSDC, vault, scomMarket, eqtyMarket, predictionMarket };
 });
