@@ -1,0 +1,49 @@
+{
+  "_format": "hh3-sol-build-info-1",
+  "id": "solc-0_8_28-be7b1042bb8532ce929d9864b9161a6b0e453865",
+  "solcVersion": "0.8.28",
+  "solcLongVersion": "0.8.28+commit.7893614a",
+  "compilerType": "solc",
+  "toolVersions": {
+    "hardhat": "3.9.1"
+  },
+  "userSourceNameMap": {
+    "contracts/PerpMarket.sol": "project/contracts/PerpMarket.sol"
+  },
+  "input": {
+    "language": "Solidity",
+    "settings": {
+      "evmVersion": "cancun",
+      "optimizer": {
+        "enabled": true,
+        "runs": 200
+      },
+      "outputSelection": {
+        "*": {
+          "": [
+            "ast"
+          ],
+          "*": [
+            "abi",
+            "evm.bytecode.linkReferences",
+            "evm.bytecode.object",
+            "evm.bytecode.opcodes",
+            "evm.bytecode.sourceMap",
+            "evm.deployedBytecode.immutableReferences",
+            "evm.deployedBytecode.linkReferences",
+            "evm.deployedBytecode.object",
+            "evm.deployedBytecode.opcodes",
+            "evm.deployedBytecode.sourceMap",
+            "evm.methodIdentifiers"
+          ]
+        }
+      },
+      "remappings": []
+    },
+    "sources": {
+      "project/contracts/PerpMarket.sol": {
+        "content": "// SPDX-License-Identifier: MIT\r\npragma solidity ^0.8.28;\r\n\r\ninterface IVault {\r\n    function lockMargin(address user, uint256 amount) external;\r\n    function creditUser(address user, uint256 amount) external;\r\n}\r\n\r\ncontract PerpMarket {\r\n    IVault public immutable vault;\r\n    address public owner;\r\n\r\n    uint256 public virtualBaseReserve;\r\n    uint256 public virtualQuoteReserve;\r\n    uint256 public constant k_PRECISION = 1e18;\r\n\r\n    // Maintenance margin ratio: if a position's remaining equity falls below\r\n    // this % of its original size, it can be liquidated. 500 = 5% (basis points / 100)\r\n    uint256 public constant MAINTENANCE_MARGIN_BPS = 500; // 5%\r\n    uint256 public constant LIQUIDATION_REWARD_BPS = 1000; // 10% of remaining margin goes to liquidator\r\n\r\n    struct Position {\r\n        bool isLong;\r\n        uint256 margin;\r\n        uint256 size;\r\n        uint256 entryPrice;\r\n        bool isOpen;\r\n    }\r\n\r\n    mapping(address => Position) public positions;\r\n\r\n    event PositionOpened(address indexed user, bool isLong, uint256 margin, uint256 size, uint256 entryPrice);\r\n    event PositionClosed(address indexed user, int256 pnl, uint256 payout);\r\n    event PositionLiquidated(address indexed user, address indexed liquidator, uint256 reward);\r\n\r\n    modifier onlyOwner() {\r\n        require(msg.sender == owner, \"not owner\");\r\n        _;\r\n    }\r\n\r\n    constructor(address _vault, uint256 _initialBaseReserve, uint256 _initialQuoteReserve) {\r\n        vault = IVault(_vault);\r\n        owner = msg.sender;\r\n        virtualBaseReserve = _initialBaseReserve;\r\n        virtualQuoteReserve = _initialQuoteReserve;\r\n    }\r\n\r\n    function getMarkPrice() public view returns (uint256) {\r\n        return (virtualQuoteReserve * k_PRECISION) / virtualBaseReserve;\r\n    }\r\n\r\n    function openPosition(bool isLong, uint256 margin, uint256 leverage) external {\r\n        require(!positions[msg.sender].isOpen, \"position already open\");\r\n        require(leverage >= 1 && leverage <= 20, \"leverage out of range\");\r\n\r\n        vault.lockMargin(msg.sender, margin);\r\n\r\n        uint256 size = margin * leverage;\r\n        uint256 entryPrice = getMarkPrice();\r\n\r\n        if (isLong) {\r\n            uint256 quoteIn = size;\r\n            uint256 newQuoteReserve = virtualQuoteReserve + quoteIn;\r\n            uint256 newBaseReserve = (virtualBaseReserve * virtualQuoteReserve) / newQuoteReserve;\r\n            virtualQuoteReserve = newQuoteReserve;\r\n            virtualBaseReserve = newBaseReserve;\r\n        } else {\r\n            uint256 baseIn = (size * k_PRECISION) / entryPrice;\r\n            uint256 newBaseReserve = virtualBaseReserve + baseIn;\r\n            uint256 newQuoteReserve = (virtualBaseReserve * virtualQuoteReserve) / newBaseReserve;\r\n            virtualBaseReserve = newBaseReserve;\r\n            virtualQuoteReserve = newQuoteReserve;\r\n        }\r\n\r\n        positions[msg.sender] = Position({\r\n            isLong: isLong,\r\n            margin: margin,\r\n            size: size,\r\n            entryPrice: entryPrice,\r\n            isOpen: true\r\n        });\r\n\r\n        emit PositionOpened(msg.sender, isLong, margin, size, entryPrice);\r\n    }\r\n\r\n    // Calculates current PnL for a position without closing it\r\n    function getPnl(address user) public view returns (int256) {\r\n        Position memory pos = positions[user];\r\n        if (!pos.isOpen) return 0;\r\n\r\n        uint256 currentPrice = getMarkPrice();\r\n        int256 priceDelta = int256(currentPrice) - int256(pos.entryPrice);\r\n\r\n        if (pos.isLong) {\r\n            return (priceDelta * int256(pos.size)) / int256(pos.entryPrice);\r\n        } else {\r\n            return (-priceDelta * int256(pos.size)) / int256(pos.entryPrice);\r\n        }\r\n    }\r\n\r\n    // Returns remaining equity = margin + pnl (can be negative in theory, floored at 0 here)\r\n    function getEquity(address user) public view returns (uint256) {\r\n        Position memory pos = positions[user];\r\n        if (!pos.isOpen) return 0;\r\n\r\n        int256 pnl = getPnl(user);\r\n        int256 equity = int256(pos.margin) + pnl;\r\n        return equity > 0 ? uint256(equity) : 0;\r\n    }\r\n\r\n    // A position is liquidatable if equity falls below the maintenance margin\r\n    // requirement relative to its size\r\n    function isLiquidatable(address user) public view returns (bool) {\r\n        Position memory pos = positions[user];\r\n        if (!pos.isOpen) return false;\r\n\r\n        uint256 equity = getEquity(user);\r\n        uint256 maintenanceRequirement = (pos.size * MAINTENANCE_MARGIN_BPS) / 10000;\r\n\r\n        return equity < maintenanceRequirement;\r\n    }\r\n\r\n    // Approximate liquidation price for a position - useful for your heatmap!\r\n    function getLiquidationPrice(address user) public view returns (uint256) {\r\n        Position memory pos = positions[user];\r\n        if (!pos.isOpen) return 0;\r\n\r\n        uint256 maintenanceRequirement = (pos.size * MAINTENANCE_MARGIN_BPS) / 10000;\r\n        // How much loss (in quote terms) can be absorbed before hitting maintenance margin\r\n        uint256 maxLoss = pos.margin > maintenanceRequirement ? pos.margin - maintenanceRequirement : 0;\r\n        uint256 priceMove = (maxLoss * pos.entryPrice) / pos.size;\r\n\r\n        if (pos.isLong) {\r\n            return pos.entryPrice > priceMove ? pos.entryPrice - priceMove : 0;\r\n        } else {\r\n            return pos.entryPrice + priceMove;\r\n        }\r\n    }\r\n\r\n    function closePosition() external {\r\n        Position memory pos = positions[msg.sender];\r\n        require(pos.isOpen, \"no open position\");\r\n\r\n        uint256 payout = getEquity(msg.sender);\r\n        int256 pnl = getPnl(msg.sender);\r\n\r\n        delete positions[msg.sender];\r\n\r\n        if (payout > 0) {\r\n            vault.creditUser(msg.sender, payout);\r\n        }\r\n\r\n        emit PositionClosed(msg.sender, pnl, payout);\r\n    }\r\n\r\n    // Anyone can call this to liquidate an undercollateralized position and earn a reward\r\n    function liquidate(address user) external {\r\n        require(isLiquidatable(user), \"position not liquidatable\");\r\n\r\n        uint256 equity = getEquity(user);\r\n\r\n        uint256 reward = (equity * LIQUIDATION_REWARD_BPS) / 10000;\r\n        uint256 remainder = equity - reward;\r\n\r\n        delete positions[user];\r\n\r\n        if (remainder > 0) {\r\n            vault.creditUser(user, remainder);\r\n        }\r\n        if (reward > 0) {\r\n            vault.creditUser(msg.sender, reward);\r\n        }\r\n\r\n        emit PositionLiquidated(user, msg.sender, reward);\r\n    }\r\n}"
+      }
+    }
+  }
+}

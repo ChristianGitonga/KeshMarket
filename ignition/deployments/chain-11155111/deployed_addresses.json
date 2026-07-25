@@ -1,0 +1,16 @@
+{
+  "KeshMarketModule#MockUSDC": "0x9831fd9F611D9264A1A9f80f9e303f304Ff4D88e",
+  "KeshMarketModule#CbkRateMarket": "0x62246B0d5508729ee6303A5Ce2Aa50bA3984f4f1",
+  "KeshMarketModule#InflationMarket": "0xa8A7A051D7317c89ab309DFc56B3a21257aee78e",
+  "KeshMarketModule#KesUsdMarket": "0x26b34820E801E559A38c2d1bdA52BB27430339Fa",
+  "KeshMarketModule#NseIndexMarket": "0xbdc31b9D24fEf349e3026E04e804200Af9619080",
+  "KeshMarketModule#RainfallMarket": "0x9D7B4b34e88011f868323bd28B1179C797B08596",
+  "KeshMarketModule#ScomPriceMarket": "0x1DC851515061A7dAb2C117Eee2D90AC99Af58639",
+  "KeshMarketModule#Vault": "0x89474974E3b96e3F20DbbBef6a15508499621c83",
+  "KeshMarketModule#CoopMarket": "0xbFD6Cd05BCa718b322deEE1AD614A32F3d57C97d",
+  "KeshMarketModule#EablMarket": "0x95420B794A8914bD7ac6d58E77d74b9B50b55B7C",
+  "KeshMarketModule#BatMarket": "0xd453346b913e60f77fF8702D335daE4980D34aaF",
+  "KeshMarketModule#EqtyMarket": "0x6f7A073657fE9DFd62Ef15BAefB67445A0a3Aa6e",
+  "KeshMarketModule#KcbMarket": "0x36ab7fd07FA337ce3a29451dBdD089A4a89738A9",
+  "KeshMarketModule#ScomMarket": "0x6f0dBe4622f354DC218aac9B5364a45259650dE5"
+}
